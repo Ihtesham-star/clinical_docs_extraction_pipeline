@@ -1,11 +1,13 @@
 # clinical_docs_extraction_pipeline
 
-A set of four rule-based Python scripts for de-identifying, extracting structured
+A set of rule-based Python scripts for de-identifying, extracting structured
 variables from, and reconciling duplicate records across Russian-language clinical
 discharge documents that also contain embedded Kazakh personal names. Developed
 for documents that mix Cyrillic and Latin script within the same clinical
 abbreviation (e.g. scale names such as GMFCS or FIM), a case not handled by
-existing English-language clinical NLP tooling.
+existing English-language clinical NLP tooling. Includes a synthetic, fully
+fabricated test corpus and scoring script used to quantitatively validate the
+pipeline without using any real patient data.
 
 ## Contents
 
@@ -15,6 +17,8 @@ existing English-language clinical NLP tooling.
 | `anonymize_timeout_files.py` | Word-level fallback redaction for documents that time out under the primary pass. |
 | `extract_clinical_fields.py` | Structured variable extraction from de-identified documents, including mixed-script (Cyrillic/Latin homoglyph) tolerant patterns and a grammatical-gender-based sex-inference cascade. |
 | `deduplicate_dataset.py` | Reconciles duplicate records across independently processed batches of the same source documents. |
+| `generate_synthetic_test_corpus.py` | Generates a corpus of 85 fully synthetic documents, structurally matching the real document template, with a known ground-truth manifest, for quantitative validation without real patient data. |
+| `compute_accuracy.py` | Scores the pipeline's output against the synthetic ground-truth manifest, computing de-identification recall, extraction accuracy, and sex-inference coverage/accuracy. |
 
 ## Requirements
 
@@ -26,9 +30,9 @@ Developed and tested with PyMuPDF (`fitz`) — see https://pymupdf.readthedocs.i
 
 ## Usage
 
-Each script is intended to be run as a standalone step in the order listed above
-(anonymize → extract → deduplicate). Input/output paths are configured via
-constants at the top of each script; edit these before running.
+Each pipeline script is intended to be run as a standalone step in the order
+listed above (anonymize → extract → deduplicate). Input/output paths are
+configured via constants at the top of each script; edit these before running.
 
 ```bash
 python anonymize_all_pdfs.py
@@ -36,6 +40,27 @@ python anonymize_timeout_files.py   # only for documents flagged as timed out
 python extract_clinical_fields.py
 python deduplicate_dataset.py       # only if reconciling more than one batch
 ```
+
+## Reproducing the validation results
+
+The accuracy figures reported in the companion methods article were computed
+as follows, and can be independently reproduced:
+
+```bash
+python generate_synthetic_test_corpus.py   # creates synthetic_test_docs/ and
+                                            # synthetic_test_manifest.csv (fixed
+                                            # random seed — regenerates the same
+                                            # 85-document corpus every time)
+python anonymize_all_pdfs.py               # point INPUT_FOLDER at synthetic_test_docs/
+python extract_clinical_fields.py          # point INPUT_FOLDER at the anonymized output
+python compute_accuracy.py                 # point ANONYMIZED_FOLDER / EXTRACTION_CSV
+                                            # at the outputs of the two steps above
+```
+
+`compute_accuracy.py` prints de-identification recall (document-level and
+mention-level), structured field extraction accuracy, and sex-inference
+coverage/accuracy, scored automatically against the known ground truth in
+`synthetic_test_manifest.csv` — no manual review required.
 
 ## Important notes
 
@@ -48,7 +73,9 @@ python deduplicate_dataset.py       # only if reconciling more than one batch
 - **Name redaction currently matches the nominative (dictionary) form only.**
   Russian personal names inflect by grammatical case; a name appearing elsewhere
   in a document in a declined form (genitive, accusative, etc.) will not be
-  matched or redacted by the current implementation.
+  matched or redacted by the current implementation. Quantified on the synthetic
+  corpus above: declined-form mentions were left unredacted in 9/24 (37.5%) of
+  documents containing one.
 - **Name detection covers both Russian and Kazakh names.** The name-matching
   pattern's character class includes the Cyrillic letters unique to Kazakh
   (Ә, Ү, Қ, Ғ, Ң, Һ, І, Ұ) alongside the standard Russian Cyrillic alphabet,
@@ -60,3 +87,6 @@ python deduplicate_dataset.py       # only if reconciling more than one batch
   Kazakh-language constructions, and will simply produce no inference (rather
   than an incorrect one) for narrative written in Kazakh.
 
+## License
+
+[to be selected on GitHub]
