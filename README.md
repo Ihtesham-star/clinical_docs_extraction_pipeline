@@ -87,6 +87,3 @@ coverage/accuracy, scored automatically against the known ground truth in
   Kazakh-language constructions, and will simply produce no inference (rather
   than an incorrect one) for narrative written in Kazakh.
 
-## License
-
-[to be selected on GitHub]
