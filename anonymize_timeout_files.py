@@ -25,7 +25,7 @@ def get_patient_info(doc):
     iin = iin_match.group(1) if iin_match else None
 
     name_match = re.search(
-        r'больного\)\s+([А-ЯӘҮҚҒҢҺІҰЙа-яәүқғңһіұй\s]+?)\s+\d{12}',
+        r'больного\)\s+([А-ЯЁӘҮҚҒҢҺІҰЙа-яёәүқғңһіұй\s]+?)\s+\d{12}',
         full_text
     )
     patient_name = name_match.group(1).strip() if name_match else None
