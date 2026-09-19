@@ -19,6 +19,7 @@ pipeline without using any real patient data.
 | `deduplicate_dataset.py` | Reconciles duplicate records across independently processed batches of the same source documents. |
 | `generate_synthetic_test_corpus.py` | Generates a corpus of 85 fully synthetic documents, structurally matching the real document template, with a known ground-truth manifest, for quantitative validation without real patient data. |
 | `compute_accuracy.py` | Scores the pipeline's output against the synthetic ground-truth manifest, computing de-identification recall, extraction accuracy, and sex-inference coverage/accuracy. |
+| `latin_baseline_comparison.py` | Latin-only baseline: re-runs the scale-extraction patterns with plain Latin character classes (no homoglyph tolerance) and scores both variants against the manifest, quantifying the benefit of mixed-script tolerance. |
 
 ## Requirements
 
