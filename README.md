@@ -70,12 +70,16 @@ coverage/accuracy, scored automatically against the known ground truth in
   document template. They are not a general-purpose or certified de-identification
   solution, and should not be assumed to catch every form of identifying
   information in a differently structured document.
-- **Name redaction currently matches the nominative (dictionary) form only.**
-  Russian personal names inflect by grammatical case; a name appearing elsewhere
-  in a document in a declined form (genitive, accusative, etc.) will not be
-  matched or redacted by the current implementation. Quantified on the synthetic
-  corpus above: declined-form mentions were left unredacted in 9/24 (37.5%) of
-  documents containing one.
+- **Name redaction uses stem-based matching to cover declined forms.**
+  Russian personal names inflect by grammatical case, so in addition to the
+  full labelled name, each name part is reduced to a stem (trailing vowels
+  stripped, minimum stem length 5) and matched as a substring, which covers
+  declined forms such as genitive and dative. Measured on the synthetic corpus:
+  nominative-only matching left declined mentions unredacted in 9/24 documents
+  (mention-level recall 91.7%); with stem matching, 0/24 leaked (recall 109/109,
+  100%) with zero false-positive redactions. Name parts shorter than the stem
+  threshold remain exact-matched; irregularly declining names may need a
+  morphological analyser (e.g. pymorphy2) to generate forms explicitly.
 - **Name detection covers both Russian and Kazakh names.** The name-matching
   pattern's character class includes the Cyrillic letters unique to Kazakh
   (Ә, Ү, Қ, Ғ, Ң, Һ, І, Ұ) alongside the standard Russian Cyrillic alphabet,

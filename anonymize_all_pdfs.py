@@ -6,8 +6,8 @@ import csv
 import multiprocessing
 from pathlib import Path
 
-INPUT_FOLDER  = r""
-OUTPUT_FOLDER = r""
+INPUT_FOLDER  = r"C:\Users\01\Desktop\Nccr_Data_annonymization\MethodX\synthetic_test_docs"
+OUTPUT_FOLDER = r"C:\Users\01\Desktop\Nccr_Data_annonymization\MethodX\anon_output"
 
 TIMEOUT_SECONDS = 30  # skip file if it takes longer than this
 
@@ -36,12 +36,20 @@ def anonymize_pdf(input_path, output_path, result_queue):
                 if len(line.strip()) > 10:
                     address_lines.append(line.strip())
 
+                VOWELS = "аеёиоуыэюяәүіұ"
+
+        def _stem(word):
+            w = word
+            while len(w) > 5 and w[-1].lower() in VOWELS:
+                w = w[:-1]
+            return w
+
         to_redact = []
         if patient_name:
             to_redact.append(patient_name)
-            parts = patient_name.split()
-            if parts:
-                to_redact.append(parts[0])
+            for part in patient_name.split():
+                s = _stem(part)
+                to_redact.append(s if len(s) >= 5 else part)
         if iin:
             to_redact.append(iin)
         to_redact.extend(address_lines)
