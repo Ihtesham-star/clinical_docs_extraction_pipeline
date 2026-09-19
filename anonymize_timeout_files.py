@@ -1,4 +1,3 @@
-
 import fitz
 import re
 from pathlib import Path
@@ -18,7 +17,15 @@ OUTPUT_NAMES = [
 
 
 def get_patient_info(doc):
-    """Extract patient name and IIN from the document text."""
+    """Extract patient name and IIN from the document text.
+
+    Returns the patient name, the IIN, and a set of name-part STEMS.
+    Stems are produced by stripping trailing vowels (minimum stem length 5)
+    so that declined case forms of the name match by prefix: stem 'ИВАНОВ'
+    matches 'ИВАНОВА', 'ИВАНОВОЙ', 'ИВАНОВУ', etc. Name parts whose stem
+    would be shorter than 5 characters are kept whole (exact match) to
+    limit false-positive redaction.
+    """
     full_text = "".join(page.get_text() for page in doc)
 
     iin_match = re.search(r'\b(\d{12})\b', full_text)
@@ -30,16 +37,23 @@ def get_patient_info(doc):
     )
     patient_name = name_match.group(1).strip() if name_match else None
 
-    # Build list of individual name parts + IIN
-    targets = set()
+    VOWELS = "АЕЁИОУЫЭЮЯӘҮІҰ"
+
+    def _stem(word):
+        w = word
+        while len(w) > 5 and w[-1] in VOWELS:
+            w = w[:-1]
+        return w
+
+    name_stems = set()
     if patient_name:
         for part in patient_name.split():
             if len(part) >= 3:
-                targets.add(part.upper())
-    if iin:
-        targets.add(iin)
+                p = part.upper()
+                s = _stem(p)
+                name_stems.add(s if len(s) >= 5 else p)
 
-    return patient_name, iin, targets
+    return patient_name, iin, name_stems
 
 
 def get_address_rects(page):
@@ -61,25 +75,39 @@ def get_address_rects(page):
     return rects
 
 
+def _word_matches(word, iin, name_stems):
+    """True if this word should be redacted.
+
+    The IIN is matched exactly. Name words are matched by prefix against
+    the stems, with the length difference capped at 4 characters so a stem
+    cannot swallow much longer unrelated words (e.g. a place name that
+    merely begins with the same letters).
+    """
+    if iin and word == iin:
+        return True
+    return any(
+        word.startswith(s) and (len(word) - len(s)) <= 4
+        for s in name_stems
+    )
+
+
 def anonymize_precise(input_path, output_path):
     doc = fitz.open(input_path)
-    patient_name, iin, name_parts = get_patient_info(doc)
+    patient_name, iin, name_stems = get_patient_info(doc)
 
     print(f"  Name detected: {patient_name}")
     print(f"  IIN detected:  {iin}")
-    print(f"  Name parts to redact: {name_parts}")
+    print(f"  Name stems to redact: {name_stems}")
 
     total_redactions = 0
 
     for page_num, page in enumerate(doc):
         redacted_on_page = 0
 
-        
         words = page.get_text("words")  # (x0,y0,x1,y1,word,block,line,word_no)
         for word_data in words:
             word = word_data[4].strip().upper()
-            # Check if this word matches any name part or IIN
-            if word in name_parts:
+            if _word_matches(word, iin, name_stems):
                 rect = fitz.Rect(word_data[0], word_data[1],
                                  word_data[2], word_data[3])
                 # Expand slightly to catch surrounding whitespace
@@ -87,12 +115,11 @@ def anonymize_precise(input_path, output_path):
                 page.add_redact_annot(rect, fill=(1, 1, 1))
                 redacted_on_page += 1
 
-        
         if page_num == 0:
             addr_rects = get_address_rects(page)
             for r in addr_rects:
                 page.add_redact_annot(r, fill=(1, 1, 1))
-                redacted_on_page += len(addr_rects)
+                redacted_on_page += 1
 
         total_redactions += redacted_on_page
         page.apply_redactions()
