@@ -27,8 +27,8 @@ import fitz  # PyMuPDF
 import pandas as pd
 
 # ── CONFIGURE ────────────────────────────────────────────────────────────────
-ANON_FOLDER = Path(r"C:\Users\01\Desktop\Nccr_Data_annonymization\MethodX\anon_output")           # folder with anon_*.pdf from the synthetic run
-MANIFEST_FILE = Path(r"C:\Users\01\Desktop\Nccr_Data_annonymization\MethodX\synthetic_test_manifest.csv")
+ANON_FOLDER = Path(r"")           # folder with anon_*.pdf from the synthetic run
+MANIFEST_FILE = Path(r"")
 # ─────────────────────────────────────────────────────────────────────────────
 
 NUM = r"(\d+[,\.]\d+)"

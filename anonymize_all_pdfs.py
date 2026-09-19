@@ -6,8 +6,8 @@ import csv
 import multiprocessing
 from pathlib import Path
 
-INPUT_FOLDER  = r"C:\Users\01\Desktop\Nccr_Data_annonymization\MethodX\synthetic_test_docs"
-OUTPUT_FOLDER = r"C:\Users\01\Desktop\Nccr_Data_annonymization\MethodX\anon_output"
+INPUT_FOLDER  = r""
+OUTPUT_FOLDER = r""
 
 TIMEOUT_SECONDS = 30  # skip file if it takes longer than this
 
