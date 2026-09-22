@@ -31,13 +31,15 @@ def get_patient_info(doc):
     iin_match = re.search(r'\b(\d{12})\b', full_text)
     iin = iin_match.group(1) if iin_match else None
 
+    # Character class covers the full Kazakh Cyrillic alphabet (incl. Ө)
+    # and hyphenated name parts.
     name_match = re.search(
-        r'больного\)\s+([А-ЯЁӘҮҚҒҢҺІҰЙа-яёәүқғңһіұй\s]+?)\s+\d{12}',
+        r'больного\)\s+([А-ЯЁӘӨҮҚҒҢҺІҰЙа-яёәөүқғңһіұй\s\-]+?)\s+\d{12}',
         full_text
     )
     patient_name = name_match.group(1).strip() if name_match else None
 
-    VOWELS = "АЕЁИОУЫЭЮЯӘҮІҰ"
+    VOWELS = "АЕЁИОУЫЭЮЯӘӨҮІҰ"
 
     def _stem(word):
         w = word
@@ -45,13 +47,19 @@ def get_patient_info(doc):
             w = w[:-1]
         return w
 
+    # Hyphenated parts also contribute their components (>= 4 chars) so a
+    # component reused alone elsewhere is still caught.
     name_stems = set()
     if patient_name:
         for part in patient_name.split():
-            if len(part) >= 3:
-                p = part.upper()
-                s = _stem(p)
-                name_stems.add(s if len(s) >= 5 else p)
+            if len(part) < 3:
+                continue
+            p = part.upper()
+            subparts = [p] + ([c for c in p.split('-') if len(c) >= 4]
+                              if '-' in p else [])
+            for sp in subparts:
+                s = _stem(sp)
+                name_stems.add(s if len(s) >= 5 else sp)
 
     return patient_name, iin, name_stems
 
@@ -69,7 +77,10 @@ def get_address_rects(page):
             continue
         if found_addr and ('Жұмыс орны' in text or 'Место работы' in text):
             break
-        if found_addr and len(text) > 10:
+        # Every non-empty block in the address region is redacted; a
+        # minimum-length filter previously skipped short lines such as
+        # «ДОМ: 11», leaving partial addresses in the output.
+        if found_addr and text:
             rects.append(fitz.Rect(block[0], block[1], block[2], block[3]))
 
     return rects

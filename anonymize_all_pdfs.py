@@ -21,8 +21,10 @@ def anonymize_pdf(input_path, output_path, result_queue):
         iin_match = re.search(r'\b(\d{12})\b', full_text)
         iin = iin_match.group(1) if iin_match else None
 
+        # Character class covers the full Kazakh Cyrillic alphabet
+        # (incl. Ө) and hyphenated name parts.
         name_match = re.search(
-            r'больного\)\s+([А-ЯЁӘҮҚҒҢҺІҰЙа-яёәүқғңһіұй\s]+?)\s+\d{12}',
+            r'больного\)\s+([А-ЯЁӘӨҮҚҒҢҺІҰЙа-яёәөүқғңһіұй\s\-]+?)\s+\d{12}',
             full_text
         )
         patient_name = name_match.group(1).strip() if name_match else None
@@ -30,13 +32,17 @@ def anonymize_pdf(input_path, output_path, result_queue):
         address_match = re.search(
             r'Домашний адрес\)\s*\n(.*?)\n4\.', full_text, re.DOTALL
         )
+        # Every non-empty line of the address block is redacted; a minimum-
+        # length filter previously skipped short lines such as «ДОМ: 11»,
+        # leaving partial addresses in the output.
         address_lines = []
         if address_match:
             for line in address_match.group(1).strip().split('\n'):
-                if len(line.strip()) > 10:
-                    address_lines.append(line.strip())
+                line = line.strip()
+                if line:
+                    address_lines.append(line)
 
-                VOWELS = "аеёиоуыэюяәүіұ"
+        VOWELS = "аеёиоуыэюяәөүіұ"
 
         def _stem(word):
             w = word
@@ -44,10 +50,23 @@ def anonymize_pdf(input_path, output_path, result_queue):
                 w = w[:-1]
             return w
 
+        # Name targets: full labelled string (exact search), plus per-part
+        # stems for the word-level pass below. Hyphenated parts also
+        # contribute their components (>= 4 chars) so a component reused
+        # alone elsewhere is still caught.
+        name_parts = patient_name.split() if patient_name else []
+        name_stems = set()
+        for part in name_parts:
+            subparts = [part] + ([p for p in part.split('-') if len(p) >= 4]
+                                 if '-' in part else [])
+            for p in subparts:
+                s = _stem(p)
+                name_stems.add((s if len(s) >= 5 else p).upper())
+
         to_redact = []
         if patient_name:
             to_redact.append(patient_name)
-            for part in patient_name.split():
+            for part in name_parts:
                 s = _stem(part)
                 to_redact.append(s if len(s) >= 5 else part)
         if iin:
@@ -56,17 +75,35 @@ def anonymize_pdf(input_path, output_path, result_queue):
 
         count = 0
         for page in doc:
+            # Pass A: exact substring search (full name string, IIN,
+            # address lines, nominative/stem forms as typed in the
+            # labelled field).
             for text in to_redact:
                 if not text or len(text) < 3:
                     continue
                 for inst in page.search_for(text):
                     page.add_redact_annot(inst, fill=(1, 1, 1))
                     count += 1
+            # Pass B: case-insensitive word-level scan. The labelled field
+            # is upper-case while narrative mentions are title-case, and
+            # exact substring search does not bridge that; comparing
+            # upper-normalised words against upper-normalised stems does.
+            # The length cap stops a stem from swallowing much longer
+            # unrelated words.
+            if name_stems:
+                for w in page.get_text("words"):
+                    token = w[4].strip().upper()
+                    if any(token.startswith(s) and len(token) - len(s) <= 4
+                           for s in name_stems):
+                        rect = fitz.Rect(w[0], w[1], w[2], w[3])
+                        page.add_redact_annot(rect, fill=(1, 1, 1))
+                        count += 1
             page.apply_redactions()
 
         doc.save(output_path)
         doc.close()
-        result_queue.put(('ok', count, patient_name is not None, iin is not None))
+        result_queue.put(('ok', count, patient_name is not None, iin is not None,
+                          len(name_parts)))
 
     except Exception as e:
         result_queue.put(('error', str(e)))
@@ -81,16 +118,16 @@ def process_with_timeout(pdf_path, out_path):
     if p.is_alive():
         p.terminate()
         p.join()
-        return 0, False, False, 'TIMEOUT — file skipped'
+        return 0, False, False, 0, 'TIMEOUT — file skipped'
 
     if not q.empty():
         result = q.get()
         if result[0] == 'ok':
-            return result[1], result[2], result[3], 'OK'
+            return result[1], result[2], result[3], result[4], 'OK'
         else:
-            return 0, False, False, f'FAILED: {result[1]}'
+            return 0, False, False, 0, f'FAILED: {result[1]}'
 
-    return 0, False, False, 'UNKNOWN ERROR'
+    return 0, False, False, 0, 'UNKNOWN ERROR'
 
 
 def main():
@@ -109,6 +146,7 @@ def main():
 
     mapping_path = output_folder / "PRIVATE_mapping_do_not_share.csv"
     mapping_rows = []
+    needs_review = []
     success, failed, timeouts = 0, 0, 0
 
     for i, pdf_path in enumerate(pdf_files, 1):
@@ -126,7 +164,7 @@ def main():
             })
             continue
 
-        count, found_name, found_iin, status = process_with_timeout(pdf_path, out_path)
+        count, found_name, found_iin, n_parts, status = process_with_timeout(pdf_path, out_path)
 
         if 'TIMEOUT' in status:
             timeouts += 1
@@ -136,7 +174,12 @@ def main():
             print(f"[{i}/{total}] FAILED: {pdf_path.name} — {status}")
         else:
             success += 1
-            flag = " ⚠ no name/IIN" if not found_name or not found_iin else ""
+            flag = ""
+            if not found_name or n_parts < 2:
+                flag = " ⚠⚠ NAME NOT (FULLY) DETECTED — output may contain the patient name; MANUAL REVIEW REQUIRED"
+                needs_review.append(pdf_path.name)
+            elif not found_iin:
+                flag = " ⚠ no IIN detected"
             print(f"[{i}/{total}] OK {anon_name} <- {pdf_path.name} ({count} redactions){flag}")
 
         mapping_rows.append({
@@ -157,6 +200,14 @@ def main():
     print(f"DONE. Total: {total} | OK: {success} | Timeout: {timeouts} | Failed: {failed}")
     print(f"Anonymized files -> {OUTPUT_FOLDER}")
     print(f"Mapping file (PRIVATE) -> {mapping_path}")
+    if needs_review:
+        review_path = output_folder / "NEEDS_MANUAL_REVIEW.txt"
+        with open(review_path, "w", encoding="utf-8") as f:
+            f.write("\n".join(needs_review))
+        print(f"\n⚠⚠ {len(needs_review)} document(s) had no (full) name detected and MUST be manually reviewed/redacted:")
+        for n in needs_review:
+            print(f"   - {n}")
+        print(f"List written to -> {review_path}  (PRIVATE — contains original filenames)")
 
 
 if __name__ == "__main__":

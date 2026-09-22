@@ -24,7 +24,7 @@ pipeline without using any real patient data.
 ## Requirements
 
 ```bash
-pip install pymupdf pandas
+pip install -r requirements.txt
 ```
 
 Developed and tested with PyMuPDF (`fitz`) — see https://pymupdf.readthedocs.io/
@@ -74,16 +74,23 @@ coverage/accuracy, scored automatically against the known ground truth in
 - **Name redaction uses stem-based matching to cover declined forms.**
   Russian personal names inflect by grammatical case, so in addition to the
   full labelled name, each name part is reduced to a stem (trailing vowels
-  stripped, minimum stem length 5) and matched as a substring, which covers
-  declined forms such as genitive and dative. Measured on the synthetic corpus:
-  nominative-only matching left declined mentions unredacted in 9/24 documents
-  (mention-level recall 91.7%); with stem matching, 0/24 leaked (recall 109/109,
-  100%) with zero false-positive redactions. Name parts shorter than the stem
-  threshold remain exact-matched; irregularly declining names may need a
-  morphological analyser (e.g. pymorphy2) to generate forms explicitly.
+  stripped, minimum stem length 5). Stems are matched twice per page: as
+  exact substrings, and in a case-insensitive word-level pass (upper-normalised
+  prefix comparison, length difference capped at 4), since the labelled field
+  records names in UPPER CASE while narrative mentions are Title-case.
+  Hyphenated name parts also contribute their components as separate stems.
+  Measured on the synthetic corpus: nominative-only matching left declined
+  mentions unredacted in 9/24 documents (mention-level recall 91.7%); with
+  stem matching, 0/24 leaked (recall 109/109, 100%) with zero false-positive
+  redactions. Additionally validated by a two-round independent review of 25
+  real documents: 8 findings in round 1 (case variation, a hyphenated part,
+  a missing Kazakh letter, short address lines), 0 findings after correction.
+  Documents whose name cannot be detected at all are written to
+  NEEDS_MANUAL_REVIEW.txt instead of being silently output. Irregularly
+  declining names may need a morphological analyser (e.g. pymorphy2).
 - **Name detection covers both Russian and Kazakh names.** The name-matching
   pattern's character class includes the Cyrillic letters unique to Kazakh
-  (Ә, Ү, Қ, Ғ, Ң, Һ, І, Ұ) alongside the standard Russian Cyrillic alphabet,
+  (Ә, Ө, Ү, Қ, Ғ, Ң, Һ, І, Ұ) alongside the standard Russian Cyrillic alphabet,
   since patient names in the source documents include both.
 - **Sex inference relies on grammatical gender agreement** in specific Russian
   narrative constructions (birth-history and disease-onset phrasing). This is
