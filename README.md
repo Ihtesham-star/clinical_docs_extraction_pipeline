@@ -9,6 +9,8 @@ existing English-language clinical NLP tooling. Includes a synthetic, fully
 fabricated test corpus and scoring script used to quantitatively validate the
 pipeline without using any real patient data.
 
+Archived at: [https://doi.org/10.5281/zenodo.22896161](https://doi.org/10.5281/zenodo.22896161)
+
 ## Contents
 
 | File | Purpose |
